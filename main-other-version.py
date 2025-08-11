@@ -2,12 +2,12 @@ from __future__ import annotations
 import sys, math, struct
 from pathlib import Path
 from io import BytesIO
-from typing import Optional, Tuple
+from typing import Tuple
 from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFileDialog, QTabWidget,
-    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QPushButton,
+    QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QTextEdit, QGroupBox, QMessageBox
 )
 
@@ -42,14 +42,13 @@ def parse_header(raw:bytes):
     name=raw[15:end].decode('utf-8')
     return end,name,size
 
-def encode_file_to_png(path:Path,width:Optional[int]=None)->bytes:
+def encode_file_to_png(path:Path)->bytes:
     require_audio(path)
     data=path.read_bytes()
     payload=build_header(len(data),path.name)+data
     pixels_needed=(len(payload)+2)//3
-    if not width or width<1:
-        width=int(math.sqrt(pixels_needed)) or 1
-        if width*width<pixels_needed: width+=1
+    width=int(math.sqrt(pixels_needed)) or 1
+    if width*width<pixels_needed: width+=1
     height=(pixels_needed+width-1)//width
     pad=pixels_needed*3-len(payload)
     if pad: payload+=b'\0'*pad
@@ -88,16 +87,17 @@ class TaskThread(QThread):
 class EncodeTab(QWidget):
     def __init__(self,log):
         super().__init__(); self.log=log; self.thread=None
-        self.in_edit=QLineEdit(); self.in_btn=QPushButton("pick audio file"); self.in_btn.clicked.connect(self.pick_in)
-        self.width_spin=QSpinBox(); self.width_spin.setRange(0,100000); self.width_spin.setValue(0); self.width_spin.setToolTip("0 = auto")
-        self.out_edit=QLineEdit(); self.out_btn=QPushButton("Save As PNG"); self.out_btn.clicked.connect(self.pick_out)
+        self.in_edit=QLineEdit()
+        self.in_btn=QPushButton("pick audio file"); self.in_btn.clicked.connect(self.pick_in)
+        self.out_edit=QLineEdit()
+        self.out_btn=QPushButton("save as PNG"); self.out_btn.clicked.connect(self.pick_out)
         self.run_btn=QPushButton("encode"); self.run_btn.clicked.connect(self.run)
-        self.status=QLabel("idle"); self.preview=QLabel(); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status=QLabel("idle")
+        self.preview=QLabel(); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setStyleSheet("background:#111; border:1px solid #333;")
         box=QGroupBox("encode audio → png")
         fl=QVBoxLayout()
         fl.addLayout(self.row("input:",self.in_edit,self.in_btn))
-        fl.addLayout(self.row("width:",self.width_spin))
         fl.addLayout(self.row("output:",self.out_edit,self.out_btn))
         fl.addLayout(self.row("",self.run_btn,self.status))
         box.setLayout(fl)
@@ -130,15 +130,14 @@ class EncodeTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self,"not audio",str(e)); return
         outp=self.out_edit.text().strip() or (str(inp)+".png")
-        width=self.width_spin.value() or None
         self.status.setText("encoding..."); self.run_btn.setEnabled(False)
-        self.thread=TaskThread(encode_file_to_png,inp,width)
+        self.thread=TaskThread(encode_file_to_png,inp)
         self.thread.done.connect(lambda res,err:self.finish(res,err,outp))
         self.thread.start()
     def finish(self,res,err,outp):
         self.run_btn.setEnabled(True)
         if err:
-            self.status.setText("Error"); QMessageBox.critical(self,"encode error",str(err)); self.log(f"[ENCODE ERROR] {err}"); return
+            self.status.setText("error"); QMessageBox.critical(self,"encode error",str(err)); self.log(f"[ENCODE ERROR] {err}"); return
         png=res; Path(outp).write_bytes(png)
         self.status.setText("done")
         self.log(f"[ENCODE] {outp} ({human(len(png))})")
@@ -192,7 +191,7 @@ class DecodeTab(QWidget):
         self.run_btn.setEnabled(True)
         if err:
             self.status.setText("error")
-            QMessageBox.critical(self,"decode Error",str(err))
+            QMessageBox.critical(self,"decode error",str(err))
             self.log(f"[DECODE ERROR] {err}")
             return
         path,size=res
