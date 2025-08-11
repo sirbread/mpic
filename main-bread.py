@@ -133,8 +133,7 @@ class EncodeTab(QWidget):
             require_audio(inp)
         except Exception as e:
             QMessageBox.warning(self,"not audio",str(e)); return
-
-        suggested = self.out_edit.text() or (str(inp)+".png")
+        suggested = self.out_edit.text() or (str(inp.with_name(inp.stem + " (encoded).png")))
         p,_=QFileDialog.getSaveFileName(self,"save & encode PNG",suggested,filter="PNG (*.png)")
         if not p:
             return
@@ -219,8 +218,10 @@ class DecodeTab(QWidget):
         self.thread.done.connect(self.finish); self.thread.start()
     def task(self,pngp,out_dir):
         name,data=decode_png(pngp)
+        name_path = Path(name)
+        decoded_name = name_path.stem + " (decoded)" + name_path.suffix
         out_dir.mkdir(parents=True,exist_ok=True)
-        out_path=out_dir/name
+        out_path=out_dir/decoded_name
         out_path.write_bytes(data)
         return out_path,len(data)
     def finish(self,res,err):
