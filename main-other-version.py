@@ -8,11 +8,12 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFileDialog, QTabWidget,
     QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTextEdit, QGroupBox, QMessageBox
+    QTextEdit, QGroupBox, QMessageBox, QSizePolicy
 )
 
 # pr if you can find more audio file types 🤑🤑
 ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".aiff", ".aif", ".alac"}
+PREVIEW_SIZE = 400 
 
 def is_audio_file(path: Path) -> bool:
     return path.suffix.lower() in ALLOWED_AUDIO_EXT
@@ -94,6 +95,9 @@ class EncodeTab(QWidget):
         self.status=QLabel("idle")
         self.preview=QLabel(); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setStyleSheet("background:#111; border:1px solid #333;")
+        self.preview.setFixedSize(PREVIEW_SIZE, PREVIEW_SIZE)
+        self.preview.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
         box=QGroupBox("encode audio → png")
         fl=QVBoxLayout()
         fl.addLayout(self.row("input:",self.in_edit,self.in_btn))
@@ -165,8 +169,7 @@ class EncodeTab(QWidget):
         self.log(f"[ENCODE] {out_path} ({human(len(png))})")
         from PyQt6.QtGui import QPixmap
         pix=QPixmap(); pix.loadFromData(png,"PNG")
-        if pix.width()>700 or pix.height()>700:
-            pix=pix.scaled(700,700,Qt.AspectRatioMode.KeepAspectRatio)
+        pix=pix.scaled(PREVIEW_SIZE, PREVIEW_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.preview.setPixmap(pix)
 
 class DecodeTab(QWidget):
