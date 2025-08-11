@@ -3,51 +3,73 @@ import numpy as np
 from PIL import Image
 import math
 
-samples, samplerate = sf.read('audio.wav')
-print("data:", samples, "\nsamplerate:", samplerate)
+input_image_path = 'tom.png'
+encoded_audio_path = 'encoded_audio.wav'
+decoded_image_path = 'decoded_image.png'
 
-#mock_data = [0, 255, 0, 15, 240, 30, 30, 225, 60, 45, 210, 90, 60, 195, 120, 75, 180, 150, 90, 165, 180, 105, 150, 210, 120, 135, 240, 135, 120, 14, 150, 105, 44, 165, 90, 74, 180, 75, 104, 195, 60, 134, 210, 45, 164, 225, 30, 194, 240, 15, 224]
+def image_to_audio(image):
+    image = image.convert('RGB')
+    pixels = list(image.getdata())
+    flat_pixels = []
+    for r, g, b in pixels:
+        flat_pixels.extend([r, g, b])
+    samples = np.array(flat_pixels, dtype=np.uint8)
+    float_samples = (samples.astype(np.float32) / 255.0) * 2 - 1
+    return float_samples
 
-def scale_audio_to_int(samples):
-    if samples.ndim > 1:
-        samples = samples.mean(axis=1)  # Convert to mono by averaging channels
-    max_val = np.max(np.abs(samples))
-    if max_val == 0:
-        return [0] * len(samples)
-    scaled_samples = (samples / max_val * 255).astype(int)
-    return scaled_samples.tolist()
+def audio_to_image(samples, width, height):
+    int_samples = ((samples + 1) / 2 * 255).astype(np.uint8)
+    rgb_tuples = []
+    for i in range(0, len(int_samples), 3):
+        r = int_samples[i]
+        g = int_samples[i + 1] if i + 1 < len(int_samples) else 0
+        b = int_samples[i + 2] if i + 2 < len(int_samples) else 0
+        rgb_tuples.append((r, g, b))
+    image = Image.new('RGB', (width, height))
+    image.putdata(rgb_tuples)
+    return image
 
-def make_rgb(data):
-    rgb_data = []
-    for i in range(0, len(data), 3):
-        r = int(data[i]) if i < len(data) else 0
-        g = int(data[i + 1]) if i + 1 < len(data) else 0
-        b = int(data[i + 2]) if i + 2 < len(data) else 0
-        rgb_data.append((r, g, b))
-    return rgb_data
+path = input("image->audio->image / audio->image->audio? ")
+if path == "1":
+    image_path=input("image path:")
+    encoded_audio_path=image_path.replace('.png', '_encoded.wav')
+    decoded_image_path=image_path.replace('.png', '_decoded.png')
+    image = Image.open(image_path)
+    width, height = image.size
 
-print(scale_audio_to_int(samples))
-rgb_data = make_rgb(scale_audio_to_int(samples))
+    audio_samples = image_to_audio(image)
 
-width = 500
-height = 500
+    sf.write(encoded_audio_path, audio_samples, 44100)
 
-grid_size = math.ceil(math.sqrt(len(rgb_data)))
+    print(f"Saved encoded audio to {encoded_audio_path}")
 
-block_width = width // grid_size
-block_height = height // grid_size
+    loaded_samples, _ = sf.read(encoded_audio_path)
 
-image = Image.new('RGB', (width, height))
+    decoded_image = audio_to_image(loaded_samples, width, height)
+    decoded_image.show()
+    decoded_image.save(decoded_image_path)
 
-for idx, color in enumerate(rgb_data):
-    row = idx // grid_size
-    col = idx % grid_size
-    start_x = col * block_width
-    start_y = row * block_height
-    for x in range(start_x, start_x + block_width):
-        for y in range(start_y, start_y + block_height):
-            if x < width and y < height:
-                image.putpixel((x, y), color)
-    print(f"block ({col}, {row}) color {color}")
+    print(f"Saved decoded image to {decoded_image_path}")
+else:
+    audio_path=input("audio path:")
+    decoded_image_path=audio_path.replace('.wav', '_decoded.png')
+    loaded_samples, samplerate = sf.read(audio_path, always_2d=False)
 
-image.show()
+    if len(loaded_samples.shape) > 1:
+        loaded_samples = loaded_samples.mean(axis=1)
+
+    width = 500
+    height = width
+    print(f"Assumed image dimensions: {width}x{height}")
+
+    decoded_image = audio_to_image(loaded_samples, width, height)
+    decoded_image.show()
+    decoded_image.save(decoded_image_path)
+
+    print(f"Saved decoded image to {decoded_image_path}")
+
+    image = Image.open(decoded_image_path)
+    audio_samples = image_to_audio(image)
+    re_encoded_audio_path = audio_path.replace('.wav', '_re_encoded.wav')
+    sf.write(re_encoded_audio_path, audio_samples, 44100)
+    print(f"Saved re-encoded audio to {re_encoded_audio_path}")
