@@ -117,6 +117,7 @@ class EncodeTab(QWidget):
             self.in_edit.setText(p)
             self.out_edit.clear()
             self.status.setText("idle")
+            self.preview.clear()
 
     def save_and_encode(self):
         if self.thread and self.thread.isRunning():
@@ -171,35 +172,46 @@ class EncodeTab(QWidget):
 class DecodeTab(QWidget):
     def __init__(self,log):
         super().__init__(); self.log=log; self.thread=None
-        self.in_edit=QLineEdit(); self.in_btn=QPushButton("pick encoded PNG"); self.in_btn.clicked.connect(self.pick_in)
-        self.out_dir_edit=QLineEdit(); self.out_dir_btn=QPushButton("Dir"); self.out_dir_btn.clicked.connect(self.pick_dir)
-        self.run_btn=QPushButton("decode"); self.run_btn.clicked.connect(self.run)
-        self.status=QLabel("idle"); self.result_lbl=QLabel("result: -")
+        self.in_edit=QLineEdit()
+        self.in_btn=QPushButton("pick encoded PNG"); self.in_btn.clicked.connect(self.pick_in)
+        self.out_dir_edit=QLineEdit(); self.out_dir_edit.setReadOnly(True)
+        self.out_dir_btn=QPushButton("select dir + decode"); self.out_dir_btn.clicked.connect(self.pick_dir_and_decode)
+        self.status=QLabel("idle")
+        self.result_lbl=QLabel("result: -")
         box=QGroupBox("decode PNG → audio file")
         vl=QVBoxLayout()
         vl.addLayout(self.row("PNG:",self.in_edit,self.in_btn))
         vl.addLayout(self.row("out dir:",self.out_dir_edit,self.out_dir_btn))
-        vl.addLayout(self.row("",self.run_btn,self.status))
+        vl.addLayout(self.row("status:",self.status))
         vl.addWidget(self.result_lbl)
         box.setLayout(vl)
         main=QVBoxLayout(); main.addWidget(box); main.addStretch(1)
         self.setLayout(main)
     def row(self,label,*w):
         h=QHBoxLayout(); h.addWidget(QLabel(label))
-        for x in w: h.addWidget(x)
+        for x in w:  h.addWidget(x)
         h.addStretch(1); return h
     def pick_in(self):
+        if self.thread and self.thread.isRunning(): return
         p,_=QFileDialog.getOpenFileName(self,"select encoded PNG",filter="PNG (*.png)")
-        if p: self.in_edit.setText(p)
-    def pick_dir(self):
-        p=QFileDialog.getExistingDirectory(self,"select output directory")
-        if p: self.out_dir_edit.setText(p)
-    def run(self):
+        if p:
+            self.in_edit.setText(p)
+            self.status.setText("ready to decode")
+            self.result_lbl.setText("result: -")
+
+    def pick_dir_and_decode(self):
         if self.thread and self.thread.isRunning(): return
         pngp=Path(self.in_edit.text())
-        if not pngp.is_file(): QMessageBox.warning(self,"error","PNG missing"); return
-        out_dir=Path(self.out_dir_edit.text()) if self.out_dir_edit.text() else pngp.parent
-        self.status.setText("decoding..."); self.run_btn.setEnabled(False)
+        if not pngp.is_file():
+            QMessageBox.warning(self,"error","PNG not selected"); return
+        d=QFileDialog.getExistingDirectory(self,"select output directory")
+        if not d:
+            return
+        self.out_dir_edit.setText(d)
+        out_dir=Path(d)
+        self.status.setText("decoding...")
+        self.in_btn.setEnabled(False)
+        self.out_dir_btn.setEnabled(False)
         self.thread=TaskThread(self.task,pngp,out_dir)
         self.thread.done.connect(self.finish); self.thread.start()
     def task(self,pngp,out_dir):
@@ -209,7 +221,8 @@ class DecodeTab(QWidget):
         out_path.write_bytes(data)
         return out_path,len(data)
     def finish(self,res,err):
-        self.run_btn.setEnabled(True)
+        self.in_btn.setEnabled(True)
+        self.out_dir_btn.setEnabled(True)
         if err:
             self.status.setText("error")
             QMessageBox.critical(self,"decode error",str(err))
