@@ -8,6 +8,7 @@ _an example of an outputted image, encoded with audio_
 
 ## Installation
 _Only tested on Windows 11_
+
 head over to the [releases](https://github.com/sirbread/mpic/releases/tag/mpic-v0.1), and download the main-other-version.exe file. This should open up a PyQT6 window with controls for encoding and decoding.
 
 ## Development
