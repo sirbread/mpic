@@ -89,9 +89,8 @@ class EncodeTab(QWidget):
         super().__init__(); self.log=log; self.thread=None
         self.in_edit=QLineEdit()
         self.in_btn=QPushButton("pick audio file"); self.in_btn.clicked.connect(self.pick_in)
-        self.out_edit=QLineEdit()
-        self.out_btn=QPushButton("save as PNG"); self.out_btn.clicked.connect(self.pick_out)
-        self.run_btn=QPushButton("encode"); self.run_btn.clicked.connect(self.run)
+        self.out_edit=QLineEdit(); self.out_edit.setReadOnly(True)
+        self.out_btn=QPushButton("save as + encode PNG"); self.out_btn.clicked.connect(self.save_and_encode)
         self.status=QLabel("idle")
         self.preview=QLabel(); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setStyleSheet("background:#111; border:1px solid #333;")
@@ -99,10 +98,12 @@ class EncodeTab(QWidget):
         fl=QVBoxLayout()
         fl.addLayout(self.row("input:",self.in_edit,self.in_btn))
         fl.addLayout(self.row("output:",self.out_edit,self.out_btn))
-        fl.addLayout(self.row("",self.run_btn,self.status))
+        fl.addLayout(self.row("status:",self.status))
         box.setLayout(fl)
         main=QVBoxLayout()
-        main.addWidget(box); main.addWidget(QLabel("preview:")); main.addWidget(self.preview,1)
+        main.addWidget(box)
+        main.addWidget(QLabel("preview:"))
+        main.addWidget(self.preview,1)
         self.setLayout(main)
     def row(self,label,*w):
         h=QHBoxLayout(); h.addWidget(QLabel(label))
@@ -114,14 +115,12 @@ class EncodeTab(QWidget):
         p,_=QFileDialog.getOpenFileName(self,"select audio file",filter=f"{filt};;All Files (*)")
         if p:
             self.in_edit.setText(p)
-            if not self.out_edit.text(): self.out_edit.setText(p+".png")
-    def pick_out(self):
-        p,_=QFileDialog.getSaveFileName(self,"save PNG",filter="PNG (*.png)")
-        if p:
-            if not p.lower().endswith(".png"): p+=".png"
-            self.out_edit.setText(p)
-    def run(self):
-        if self.thread and self.thread.isRunning(): return
+            self.out_edit.clear()
+            self.status.setText("idle")
+
+    def save_and_encode(self):
+        if self.thread and self.thread.isRunning():
+            return
         inp=Path(self.in_edit.text())
         if not inp.is_file():
             QMessageBox.warning(self,"error","input file missing"); return
@@ -129,18 +128,40 @@ class EncodeTab(QWidget):
             require_audio(inp)
         except Exception as e:
             QMessageBox.warning(self,"not audio",str(e)); return
-        outp=self.out_edit.text().strip() or (str(inp)+".png")
-        self.status.setText("encoding..."); self.run_btn.setEnabled(False)
+
+        suggested = self.out_edit.text() or (str(inp)+".png")
+        p,_=QFileDialog.getSaveFileName(self,"save & encode PNG",suggested,filter="PNG (*.png)")
+        if not p:
+            return
+        if not p.lower().endswith(".png"):
+            p+=".png"
+        self.out_edit.setText(p)
+
+        self.status.setText("encoding...")
+        self.in_btn.setEnabled(False)
+        self.out_btn.setEnabled(False)
         self.thread=TaskThread(encode_file_to_png,inp)
-        self.thread.done.connect(lambda res,err:self.finish(res,err,outp))
+        self.thread.done.connect(lambda res,err:self.finish(res,err,Path(p)))
         self.thread.start()
-    def finish(self,res,err,outp):
-        self.run_btn.setEnabled(True)
+
+    def finish(self,res,err,out_path:Path):
+        self.in_btn.setEnabled(True)
+        self.out_btn.setEnabled(True)
         if err:
-            self.status.setText("error"); QMessageBox.critical(self,"encode error",str(err)); self.log(f"[ENCODE ERROR] {err}"); return
-        png=res; Path(outp).write_bytes(png)
+            self.status.setText("error")
+            QMessageBox.critical(self,"encode error",str(err))
+            self.log(f"[ENCODE ERROR] {err}")
+            return
+        png=res
+        try:
+            out_path.write_bytes(png)
+        except Exception as e:
+            self.status.setText("write failed")
+            QMessageBox.critical(self,"write error",f"failed to write file: {e}")
+            self.log(f"[WRITE ERROR] {e}")
+            return
         self.status.setText("done")
-        self.log(f"[ENCODE] {outp} ({human(len(png))})")
+        self.log(f"[ENCODE] {out_path} ({human(len(png))})")
         from PyQt6.QtGui import QPixmap
         pix=QPixmap(); pix.loadFromData(png,"PNG")
         if pix.width()>700 or pix.height()>700:
